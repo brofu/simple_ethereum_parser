@@ -172,3 +172,43 @@ Since the data is stored into memory for now, we need pay attention to the memor
 * An interface named `Logger` is exposed to upstream. 
 * `defaultLogger` is implemented based on `os.Std*`.
 * `fileLogger` is simply implemented based on file.
+
+
+### Tests
+
+#### Approach
+
+* Unit Tests
+    * Unit Tests is implemented with each packages. 
+    * `mockgen` paged is depended to mock the behavior of interface 
+    * `cmd/testserver` is depended for tests. (Such cases are more like integration tests, actually)
+* Integration Tests
+    * `cmd/testserver` is depended for tests. 
+    * `postman` is used to send API query
+* Performance 
+    * Skip for now because of tight timing.
+
+#### Test Cases
+
+TBA (Because of tight timing)
+
+### Deployment
+
+TBA (Because of tight timing)
+
+### Runtime
+
+TBA (Because of tight timing)
+
+### TODOs
+| Module / Function | Todo Items | Comments |
+|:---| :--- | :-- |
+| logging | * Add file partition | |
+| ethereum.httpclient | * Refactor the API implementations ||
+| parser.serviceParser| * Better RequestID generation ||
+| cmd/server | * Validate user input | |
+| Configuration | * To read configuration from separate storage components<br>* Running environment (test,uat,staging,live .etc) management. ||
+| CI/CD | * Add MAKE file<br>* Code detection, lint, race detect .etc <br>* git hooks || 
+| Obserability | * Involve monitoring and tracing | This need more supporting from infrustructure level |
+
+### Others

@@ -70,7 +70,6 @@ type serviceParser struct {
 }
 
 // NewServiceParser construct an instance of `serviceParser`
-// TODO: expose API to set `logger` and `chanAccessor`
 func NewServiceParser(context context.Context, logger logging.Logger, chainAccesser ethereum.EthereumChainAccesser, config ServiceParserConfiguration) Parser {
 
 	parser := &serviceParser{

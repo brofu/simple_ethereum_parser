@@ -21,8 +21,7 @@ var (
 func main() {
 	context := context.Background()
 	logger := logging.NewDefaultLogger(logging.LevelDebug)
-	chainAccesser := ethereum.NewEthJsonRpcClient(testEntryPoint)
-	// TODO: change to read config from configuration component
+	chainAccesser := ethereum.NewEthJsonRpcClient(testEntryPoint, logger)
 	config := parser.ServiceParserConfiguration{
 		MaxAddressNumber:     100,
 		MaxTransactionNumber: 100,
