@@ -108,6 +108,8 @@ The `ServiceParser` would serve the `API Server` and scenarios of accessing via 
 
 #### parser.ServiceParser
 
+`serviceParser` is implemented to serve the scenarios of access via code or API call. That's means, it can run as a component of a API server or be imported by caller.
+
 ##### Function
 
 * An `Parser` interface is exposed
@@ -132,6 +134,36 @@ Since the data is stored into memory for now, we need pay attention to the memor
 * Limitation about the `max number of subcribed addresses` and `max number of transaction of one address` is involved. And such limitation is configured.
     * If the subscribed address number exceeds the limitation, FRU policy would be used to retired some addresses.
     * If the number of stored transactions of an address exceeds the limitation, the old ones would be retired (this actually depends on the order of the data return from chain entry point).
+
+#### parser.toolParser
+
+`toolParser` is used to server the command-line tool scenario. For this scenario, performance is required so much. So, it just calls the `ethereum.httpclient` to get the block number and transactions of an address
+
+#### cmd/server
+
+`cmd/server` works as an `API Server`. 
+
+##### Function
+
+* It implements the 3 required APIs, based on `json` format and HTTP protocol. 
+* It depends on the `parser.serviceParser` to do the work
+
+##### cmd/cmdtool
+
+`cmd/cmdtool` is an simple command line tool, which support ad-hoc, manually scenarios to get block number and transactions. For this scenario, performance is not so sensitive.
+
+##### Function
+
+* It depends on the `parser.toolParser` to do the work
+
+#### cmd/testserver
+
+`cmd/testserver` works as an `API Server` for testing purpose.
+
+* `Rate Limiting` is triggered when access the required entry point. So, a test service is necessary for unit tests and some of integration tests. 
+* It serves API call via `Ethereum JSON RPC` format and HTTP protocol.
+* It constructs some mock on chain data, the block number and transactions
+
 
 #### logging.Logger
 
