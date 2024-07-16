@@ -3,5 +3,7 @@ A simple Ethereum parser, which would get the transactions of subscribed address
 
 ## Docs
 
+[Detailed Docs Refer To](docs/docs.md)
+
 
 
