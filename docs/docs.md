@@ -11,7 +11,8 @@ This docs is used to record the specifications of `Simple Ethereum Parser`. The 
 3. Tests
 4. Deployment 
 5. Runtime
-6. Others
+6. TODOs 
+7. Others
 
 
 
@@ -40,34 +41,42 @@ According to the original requirements document, there are two parts of function
 ### Non-Function API Requirements
 
 * Performance
-  The QPS of API `parser.GetTransactions` is 200. To achieve this, there are some key problems need to pay attention for 3 different access ways.
+
+The QPS of API `parser.GetTransactions` is 200. To achieve this, there are some key problems need to pay attention for 3 different access ways.
   * Access via code. The caller need to pay attention to the performance. Some configurations is necessary to support this. See more details in the Tech Designs part.
   * Access vis command line. Since the cmd tool is called manually, the performance is not required so strictly. For example, it's tolerable of a little higher latency to get all the transactions of an address.
   * Access via API call. Performance is required to match the QPS.
 
 * High Availability
-  For simplification, HA is not covered in the initial version of the project.  
+
+For simplification, HA is not covered in the initial version of the project.  
   * Currently, we are storing data in memory, which leads the service instances stateful. To achieve the HA, we definitely need to consider data replication (hence data latency and consistency are coming afterward closely) 
   * In future, it's worth to store the data in other centralized storage component, which make the service stateless, which is more friendly to HA.
 
 * Stability
+
   One potential risk of stability is the **memory usage**. It's possible to have a large number of addresses subscribed and some of them have a huge number of transactions. 
 
   Before the data is migrated to a robust separate storage component, it's necessary to to have some limitations on the number of subscribed addresses and the number of transactions of each address
   
 
 * Scalability  
-  This point is NOT covered in this version. 
 
-  The services are stateful with in-memory data, hence a lot of work need to consider to scale up/down the service instances, for example, data sharding and migration need to consider when the service is scaled up or down. 
+This point is NOT covered in this version. 
 
-  Actually, there would be ONLY 1 instance running in the initial version.
+The services are stateful with in-memory data, hence a lot of work need to consider to scale up/down the service instances, for example, data sharding and migration need to consider when the service is scaled up or down. 
+
+Actually, there would be ONLY 1 instance running in the initial version.
 
 
 * Extendability 
-  The `parser` package is exposed as interface. It would be easy to extend different implementations, for example, an implementation which uses separated storage components. 
-  
 
+The `parser` package is exposed as interface. It would be easy to extend different implementations, for example, an implementation which uses separated storage components. 
+  
+* Observability
+
+For the first version, only logging is supported.  Its' better to have monitoring and tracing also, but that need more complex infrustructures.
+    
 ## The Tech Designs 
 
 ### Terminology
@@ -86,17 +95,48 @@ There would 2 implementations of `Parser` interface, which serve different scena
 
 ### Key Designs
 
-#### ServiceParser
+#### ethereum.httpclient 
 
 The `ServiceParser` would serve the `API Server` and scenarios of accessing via code.  
 
 ##### Function
 
+* An `EthereumChainAccesser` interface is exposed for application services.
+* Implement client based on `Ethereum JSON RPC` based on HTTP protocol.
+* It uses the golang built-in `net/http` package
+* It access the ethereum chain via entry point "https://cloudflare-eth.com/" (or local servers for testing)
+
+#### parser.ServiceParser
+
+##### Function
+
+* An `Parser` interface is exposed
+* `parser.ServiceParser` implements the `Parser` interface.
+* It depend on the `ethereum.EthereumChainAccessor` to interact with ethererum chain
 
 
+##### Performance
 
+To reduce the cost of accessing on-chain data, `parser.ServiceParser` would access ethereum chain asynchronously. For more details, there are several components co-working.
 
+* The main thread. Serve the API call.
+* The `Task Distributer`. Distribute the task to get new transaction when there is new block generated on chain.
+* The `Task Execution Controller`. Control the task processing progress.
+* The `Task Execution Workers`. Execute the task to get new transactions for addresses **concurrently**. The number of workers can be configured. 
 
+##### Stability
 
+Since the data is stored into memory for now, we need pay attention to the memory usage. To do this, we need to
 
+* Make sure there is no memory leakage. (It's **Definitely**.)
+* Limitation about the `max number of subcribed addresses` and `max number of transaction of one address` is involved. And such limitation is configured.
+    * If the subscribed address number exceeds the limitation, FRU policy would be used to retired some addresses.
+    * If the number of stored transactions of an address exceeds the limitation, the old ones would be retired (this actually depends on the order of the data return from chain entry point).
 
+#### logging.Logger
+
+`logging` package provide the Obserability of the whole project.
+
+* An interface named `Logger` is exposed to upstream. 
+* `defaultLogger` is implemented based on `os.Std*`.
+* `fileLogger` is simply implemented based on file.
