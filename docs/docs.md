@@ -205,7 +205,7 @@ TBA (Because of tight timing)
 |:---| :--- | :-- |
 | logging | * Add file partition | |
 | ethereum.httpclient | * Refactor the API implementations ||
-| parser.serviceParser| * Better RequestID generation ||
+| parser.serviceParser| * Better RequestID generation<br>* Use pprof to make sure no memory leakage ||
 | cmd/server | * Validate user input | |
 | Configuration | * To read configuration from separate storage components<br>* Running environment (test,uat,staging,live .etc) management. ||
 | CI/CD | * Add MAKE file<br>* Code detection, lint, race detect .etc <br>* git hooks || 
