@@ -76,8 +76,9 @@ func NewServiceParser(context context.Context, logger logging.Logger, chainAcces
 	parser := &serviceParser{
 		newAddrLock:          sync.Mutex{},
 		addrLock:             sync.RWMutex{},
-		transactionTasks:     make(chan transactionTask, config.MaxConcurrentThreads),
+		transactionTasks:     make(chan transactionTask),
 		newTaskNoti:          make(chan int),
+		finishedTasks:        make(chan struct{}),
 		interval:             config.Interval,
 		maxConcurrentThreads: config.MaxConcurrentThreads,
 		maxTransactionNumber: config.MaxTransactionNumber,
@@ -193,16 +194,16 @@ func (this *serviceParser) startTaskExecution(context context.Context) {
 		case taskNum := <-this.newTaskNoti:
 			this.logger.Infof("getting new tasks | number: %d", taskNum)
 			this.processing = true
-
 			// monitor the finished tasks
 			finished := 0
-			for _ = <-this.finishedTasks; ; {
+			for range this.finishedTasks {
 				finished += 1
 				if finished == taskNum { // record the finished workers
 					break
 				}
-				this.logger.Infof("finished tasks number: %d, total: %s", finished, taskNum)
+				this.logger.Debugf("controller. finished tasks number: %d, total: %d", finished, taskNum)
 			}
+			this.logger.Infof("controller. finished tasks number: %d, total: %d", finished, taskNum)
 			this.processing = false
 		}
 	}
@@ -256,6 +257,7 @@ func (this *serviceParser) executeTasks(context context.Context, workerNum int) 
 // distributeTasks distribute the task (to get transactions of new block) to the queue.
 func (this *serviceParser) distributeTasks(newBlockNum int) {
 	addresses := this.addresses.allAddresses()
+	this.logger.Debugf("existing addresses %v", addresses)
 	for _, addr := range addresses {
 		this.logger.Infof("distribute task | address: %s", addr)
 		this.transactionTasks <- transactionTask{newBlockNum, addr}
@@ -323,7 +325,8 @@ func (this *serviceParser) doUpdateTransactions(context context.Context, req *et
 	}
 	addrData.transactions = newTrx
 
-	this.logger.Infof("update transactions success | address: %s, trx number: %d", req.FromAddress, minInt(newTrxNum, this.maxTransactionNumber))
+	this.logger.Infof("update transactions success | address: %s, new trx number: %d, total: %d",
+		req.FromAddress, minInt(newTrxNum, this.maxTransactionNumber), len(addrData.transactions))
 }
 
 func (this *serviceParser) getBlockNum(context context.Context, req *ethereum.EthGetCurrentBlockNumberRequest) (int, error) {

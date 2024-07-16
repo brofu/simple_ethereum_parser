@@ -20,8 +20,6 @@ var (
 	JsonRpcVersion              = "2.0"
 	MethodTraceFilter           = "trace_filter"
 	MethodGetCurrentBlockNumber = "eth_blockNumber"
-
-	logger = logging.NewDefaultLogger(logging.LevelInfo)
 )
 
 type JsonRpcTraceFilterParams struct {
@@ -54,11 +52,13 @@ type RPCError struct {
 // It is based on HTTP and JsonRPC 2.0
 type EthJsonRpcClient struct {
 	entryPoint string
+	logger     logging.Logger
 }
 
-func NewEthJsonRpcClient(entryPoint string) EthereumChainAccesser {
+func NewEthJsonRpcClient(entryPoint string, logger logging.Logger) EthereumChainAccesser {
 	return &EthJsonRpcClient{
 		entryPoint: entryPoint,
+		logger:     logger,
 	}
 }
 
@@ -74,38 +74,38 @@ func (this *EthJsonRpcClient) EthGetCurrentBlockNumber(context context.Context, 
 
 	rawReq, err := json.Marshal(r)
 	if err != nil {
-		logger.Errorf("marshal data fail | method: %s, err: %s", MethodGetCurrentBlockNumber, err.Error())
+		this.logger.Errorf("marshal data fail | method: %s, err: %s", MethodGetCurrentBlockNumber, err.Error())
 		return 0, err
 	}
 
 	resp, err := http.Post(this.entryPoint, contentType, bytes.NewBuffer(rawReq))
 	if err != nil {
-		logger.Errorf("chain call fail | method: %s, err: %s", MethodGetCurrentBlockNumber, err.Error())
+		this.logger.Errorf("chain call fail | method: %s, err: %s", MethodGetCurrentBlockNumber, err.Error())
 		return 0, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		logger.Errorf("chain call fail | method: %s, StatusCode: %s", MethodGetCurrentBlockNumber, resp.StatusCode)
+		this.logger.Errorf("chain call fail | method: %s, StatusCode: %d", MethodGetCurrentBlockNumber, resp.StatusCode)
 		return 0, errors.New("status code not equal 200 | status: " + resp.Status)
 	}
 
 	rawData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Errorf("read response data fail| method: %s, err: %s", MethodGetCurrentBlockNumber, err.Error())
+		this.logger.Errorf("read response data fail| method: %s, err: %s", MethodGetCurrentBlockNumber, err.Error())
 		return 0, err
 	}
 
 	data := RPCResponse{}
 	err = json.Unmarshal(rawData, &data)
 	if err != nil {
-		logger.Errorf("unmarshal response data fail | method: %s, err: %s", MethodGetCurrentBlockNumber, err)
+		this.logger.Errorf("unmarshal response data fail | method: %s, err: %s", MethodGetCurrentBlockNumber, err)
 		return 0, err
 	}
 	bnString := data.Result.(string)
 	bnInt, err := strconv.ParseInt(bnString, 0, 64)
 	if err != nil {
-		logger.Errorf("convert block number fail | bnString: %s, err: %s", bnString, err)
+		this.logger.Errorf("convert block number fail | bnString: %s, err: %s", bnString, err)
 		return 0, err
 	}
 	return int(bnInt), nil
@@ -125,7 +125,7 @@ func (this *EthJsonRpcClient) EthGetCurrentTransactionsByAddress(context context
 	rawParams, err := json.Marshal(params)
 
 	if err != nil {
-		logger.Errorf("marshal params fail | method: %s, err: %s", MethodTraceFilter, err.Error())
+		this.logger.Errorf("marshal params fail | method: %s, err: %s", MethodTraceFilter, err.Error())
 		return nil, err
 	}
 
@@ -137,46 +137,52 @@ func (this *EthJsonRpcClient) EthGetCurrentTransactionsByAddress(context context
 	}
 	rawReq, err := json.Marshal(r)
 	if err != nil {
-		logger.Errorf("marshal data fail | method: %s, err: %s", MethodTraceFilter, err.Error())
+		this.logger.Errorf("marshal data fail | method: %s, err: %s", MethodTraceFilter, err.Error())
 		return nil, err
 	}
 
 	resp, err := http.Post(this.entryPoint, contentType, bytes.NewBuffer(rawReq))
 	if err != nil {
-		logger.Errorf("chain call fail | method: %s, err: %s", MethodTraceFilter, err.Error())
+		this.logger.Errorf("chain call fail | method: %s, err: %s", MethodTraceFilter, err.Error())
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		logger.Errorf("chain call fail | method: %s, StatusCode: %s", MethodTraceFilter, resp.StatusCode)
+		this.logger.Errorf("chain call fail | method: %s, StatusCode: %s", MethodTraceFilter, resp.StatusCode)
 		return nil, errors.New("status code not equal 200 | status: " + resp.Status)
 	}
 
 	rawData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Errorf("read response data fail| method: %s, err: %s", MethodTraceFilter, err.Error())
+		this.logger.Errorf("read response data fail| method: %s, err: %s", MethodTraceFilter, err.Error())
 		return nil, err
 	}
 
 	data := &RPCResponse{}
 	err = json.Unmarshal(rawData, data)
 	if err != nil {
-		logger.Errorf("unmarshal response data fail | method: %s, err: %s", MethodTraceFilter, err)
+		this.logger.Errorf("unmarshal response data fail | method: %s, err: %s", MethodTraceFilter, err)
 		return nil, err
 	}
 	if data.Error != nil {
-		logger.Errorf("get error from chain | method: %s, err code: %d, err msg: %s", MethodTraceFilter, data.Error.Code, data.Error.Message)
+		this.logger.Errorf("get error from chain | method: %s, err code: %d, err msg: %s", MethodTraceFilter, data.Error.Code, data.Error.Message)
 		return nil, err
 	}
 
 	// if get correct response from chain,
 	// usually, there should be NO error for the following steps.
-	ifs, _ := data.Result.([]interface{})
-	res := make([]Transaction, len(ifs))
-	for i, it := range ifs {
-		trx, _ := it.(Transaction)
-		res[i] = trx
+	rawTrx, err := json.Marshal(data.Result)
+	if err != nil {
+		this.logger.Errorf("converting transaction data fail | err: %s", err.Error())
+		return nil, err
 	}
+	var res []Transaction
+	err = json.Unmarshal(rawTrx, &res)
+	if err != nil {
+		this.logger.Errorf("converting transaction data fail | err: %s", err.Error())
+		return nil, err
+	}
+
 	return res, nil
 }

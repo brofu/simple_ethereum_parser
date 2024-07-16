@@ -5,41 +5,41 @@ import "context"
 //go:generate mockgen -destination=../ethereum/mocks/mock_ethereum.go -package=mocks github.com/brofu/simple_ethereum_parser/packages/ethereum EthereumChainAccesser
 
 type Action struct {
-	From     string
-	CallType string
-	Gas      string
-	Input    string
-	To       string
-	Value    string
+	From     string `json:"from"`
+	CallType string `json:"callType"`
+	Gas      string `json:"gas"`
+	Input    string `json:"input"`
+	To       string `json:"to"`
+	Value    string `json:"value"`
 }
 
 type Result struct {
-	GasUsed string
-	Output  string
+	GasUsed string `json:"gasUsed"`
+	Output  string `json:"output"`
 }
 
 type Transaction struct {
-	Action              Action
-	BlockHash           string
-	BlockNumber         int
-	Result              Result
-	Subtraces           int
-	TraceAddress        []string
-	TransactionHash     string
-	TransactionPosition int
-	Type                string
+	Action              Action   `json:"action"`
+	BlockHash           string   `json:"blockHash"`
+	BlockNumber         int      `json:"blockNumber"`
+	Result              Result   `json:"result"`
+	Subtraces           int      `json:"subtraces"`
+	TraceAddress        []string `json:"traceAddress"`
+	TransactionHash     string   `json:"transactionHash"`
+	TransactionPosition int      `json:"transactionPosition"`
+	Type                string   `json:"type"`
 }
 
 type EthGetCurrentBlockNumberRequest struct {
-	RequestId string
+	RequestId string `json:"request_id"`
 }
 
 type EthGetCurrentTransactionsByAddressRequest struct {
-	FromBlock   string
-	ToBlock     string
-	FromAddress string
-	ToAddress   string
-	RequestId   string
+	FromBlock   string `json:"from_block"`
+	ToBlock     string `json:"to_block"`
+	FromAddress string `json:"from_address"`
+	ToAddress   string `json:"to_address"`
+	RequestId   string `json:"request_id"`
 }
 
 type EthereumChainAccesser interface {

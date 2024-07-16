@@ -56,10 +56,10 @@ func Test_serviceParser_getBlockNum(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			chanAccesser := mocks.NewMockEthereumChanAccesser(ctrl)
+			chanAccesser := mocks.NewMockEthereumChainAccesser(ctrl)
 
 			req := &ethereum.EthGetCurrentBlockNumberRequest{RequestId: "1"}
-			resp := &ethereum.EthGetCurrentBlockNumberResponse{BlockNumer: tt.want}
+			resp := tt.want
 			chanAccesser.EXPECT().EthGetCurrentBlockNumber(tt.args.context, req).Return(resp, tt.wantError)
 
 			parser := serviceParser{
@@ -109,13 +109,13 @@ func Test_serviceParser_constructGetTransactionRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			logger := logging.NewDefaultLogger()
+			logger := logging.NewDefaultLogger(logging.LevelDebug)
 
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			chainAccesser := mocks.NewMockEthereumChanAccesser(ctrl)
+			chainAccesser := mocks.NewMockEthereumChainAccesser(ctrl)
 			req := &ethereum.EthGetCurrentBlockNumberRequest{RequestId: tt.requestId}
-			resp := &ethereum.EthGetCurrentBlockNumberResponse{BlockNumer: tt.initialBlockNum}
+			resp := tt.initialBlockNum
 			chainAccesser.EXPECT().EthGetCurrentBlockNumber(tt.context, req).Return(resp, nil)
 
 			// Init Parser
@@ -158,7 +158,7 @@ func Test_serviceParser_constructGetTransactionRequest(t *testing.T) {
 func Test_serviceParser_doUpdateTransactions(t *testing.T) {
 	type args struct {
 		req     *ethereum.EthGetCurrentTransactionsByAddressRequest
-		resp    *ethereum.EthGetCurrentTransactionsByAddressResponse
+		resp    []ethereum.Transaction
 		respErr error
 	}
 	tests := []struct {
@@ -190,14 +190,12 @@ func Test_serviceParser_doUpdateTransactions(t *testing.T) {
 					FromAddress: "0xffff",
 					ToAddress:   "0xffff",
 				},
-				resp: &ethereum.EthGetCurrentTransactionsByAddressResponse{
-					Result: []ethereum.Transaction{
-						{
-							BlockHash: "0x6464",
-						},
-						{
-							BlockHash: "0xcccc",
-						},
+				resp: []ethereum.Transaction{
+					{
+						BlockHash: "0x6464",
+					},
+					{
+						BlockHash: "0xcccc",
 					},
 				},
 				respErr: nil,
@@ -224,17 +222,15 @@ func Test_serviceParser_doUpdateTransactions(t *testing.T) {
 					FromAddress: "0xffff",
 					ToAddress:   "0xffff",
 				},
-				resp: &ethereum.EthGetCurrentTransactionsByAddressResponse{
-					Result: []ethereum.Transaction{
-						{
-							BlockHash: "0x6464",
-						},
-						{
-							BlockHash: "0xcccc",
-						},
-						{
-							BlockHash: "0x1111",
-						},
+				resp: []ethereum.Transaction{
+					{
+						BlockHash: "0x6464",
+					},
+					{
+						BlockHash: "0xcccc",
+					},
+					{
+						BlockHash: "0x1111",
 					},
 				},
 				respErr: nil,
@@ -261,14 +257,12 @@ func Test_serviceParser_doUpdateTransactions(t *testing.T) {
 					FromAddress: "0xffff",
 					ToAddress:   "0xffff",
 				},
-				resp: &ethereum.EthGetCurrentTransactionsByAddressResponse{
-					Result: []ethereum.Transaction{
-						{
-							BlockHash: "0x6464",
-						},
-						{
-							BlockHash: "0xcccc",
-						},
+				resp: []ethereum.Transaction{
+					{
+						BlockHash: "0x6464",
+					},
+					{
+						BlockHash: "0xcccc",
 					},
 				},
 				respErr: nil,
@@ -281,15 +275,15 @@ func Test_serviceParser_doUpdateTransactions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			logger := logging.NewDefaultLogger()
+			logger := logging.NewDefaultLogger(logging.LevelDebug)
 
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			chainAccesser := mocks.NewMockEthereumChanAccesser(ctrl)
+			chainAccesser := mocks.NewMockEthereumChainAccesser(ctrl)
 
 			// mock getblocknum
 			req := &ethereum.EthGetCurrentBlockNumberRequest{RequestId: tt.requestId}
-			resp := &ethereum.EthGetCurrentBlockNumberResponse{BlockNumer: tt.initialBlockNum}
+			resp := tt.initialBlockNum
 			chainAccesser.EXPECT().EthGetCurrentBlockNumber(tt.context, req).Return(resp, nil)
 
 			// mock get transactions
@@ -335,7 +329,7 @@ func Test_serviceParser_doUpdateTransactions(t *testing.T) {
 			assert.Equal(t, true, ok)
 			assert.Equal(t, tt.addr, got.addressTransaction.address)
 			assert.Equal(t, tt.args.req.FromBlock, convertDecimalToHex(got.addressTransaction.blockNum))
-			assert.Equal(t, minInt(parser.maxTransactionNumber, len(tt.args.resp.Result)+tt.oldTrxNum), len(got.addressTransaction.transactions))
+			assert.Equal(t, minInt(parser.maxTransactionNumber, len(tt.args.resp)+tt.oldTrxNum), len(got.addressTransaction.transactions))
 		})
 	}
 }
@@ -416,15 +410,15 @@ func Test_serviceParser_updateAddress(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			logger := logging.NewDefaultLogger()
+			logger := logging.NewDefaultLogger(logging.LevelDebug)
 
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			chainAccesser := mocks.NewMockEthereumChanAccesser(ctrl)
+			chainAccesser := mocks.NewMockEthereumChainAccesser(ctrl)
 
 			// mock getblocknum
 			req := &ethereum.EthGetCurrentBlockNumberRequest{RequestId: tt.requestId}
-			resp := &ethereum.EthGetCurrentBlockNumberResponse{BlockNumer: tt.initialBlockNum}
+			resp := tt.initialBlockNum
 			chainAccesser.EXPECT().EthGetCurrentBlockNumber(tt.context, req).Return(resp, nil)
 
 			// Init Parser
@@ -519,15 +513,15 @@ func Test_serviceParser_GetTransactions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			logger := logging.NewDefaultLogger()
+			logger := logging.NewDefaultLogger(logging.LevelDebug)
 
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			chainAccesser := mocks.NewMockEthereumChanAccesser(ctrl)
+			chainAccesser := mocks.NewMockEthereumChainAccesser(ctrl)
 
 			// mock getblocknum
 			req := &ethereum.EthGetCurrentBlockNumberRequest{RequestId: tt.requestId}
-			resp := &ethereum.EthGetCurrentBlockNumberResponse{BlockNumer: tt.initialBlockNum}
+			resp := tt.initialBlockNum
 			chainAccesser.EXPECT().EthGetCurrentBlockNumber(tt.context, req).Return(resp, nil)
 
 			// Init Parser
