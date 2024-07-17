@@ -22,10 +22,12 @@ type transactionTask struct {
 }
 
 type ServiceParserConfiguration struct {
-	MaxAddressNumber     int
-	MaxTransactionNumber int
-	MaxConcurrentThreads int
-	Interval             time.Duration
+	MaxAddressNumber            int
+	MaxTransactionNumber        int
+	MaxConcurrentThreads        int
+	Interval                    time.Duration
+	GetBlockNumberQueryTimeout  time.Duration
+	GetTransactionsQueryTimeout time.Duration
 }
 
 // serviceParser implements the `Parser` interface
@@ -67,37 +69,43 @@ type serviceParser struct {
 	// logger
 	// may consider to allow the caller to set this.
 	logger logging.Logger
+
+	// timeout when can chain
+	getBlockNumTimeOut          time.Duration
+	getTransactionsQueryTimeout time.Duration
 }
 
 // NewServiceParser construct an instance of `serviceParser`
-func NewServiceParser(context context.Context, logger logging.Logger, chainAccesser ethereum.EthereumChainAccesser, config ServiceParserConfiguration) Parser {
+func NewServiceParser(ctx context.Context, logger logging.Logger, chainAccesser ethereum.EthereumChainAccesser, config ServiceParserConfiguration) Parser {
 
 	parser := &serviceParser{
-		newAddrLock:          sync.Mutex{},
-		addrLock:             sync.RWMutex{},
-		transactionTasks:     make(chan transactionTask),
-		newTaskNoti:          make(chan int),
-		finishedTasks:        make(chan struct{}),
-		interval:             config.Interval,
-		maxConcurrentThreads: config.MaxConcurrentThreads,
-		maxTransactionNumber: config.MaxTransactionNumber,
-		maxAddressNumber:     config.MaxAddressNumber,
-		chainAccesser:        chainAccesser,
-		logger:               logger,
-		addresses:            newAddressTransactionLRU(config.MaxAddressNumber),
+		newAddrLock:                 sync.Mutex{},
+		addrLock:                    sync.RWMutex{},
+		transactionTasks:            make(chan transactionTask),
+		newTaskNoti:                 make(chan int),
+		finishedTasks:               make(chan struct{}),
+		interval:                    config.Interval,
+		maxConcurrentThreads:        config.MaxConcurrentThreads,
+		maxTransactionNumber:        config.MaxTransactionNumber,
+		maxAddressNumber:            config.MaxAddressNumber,
+		chainAccesser:               chainAccesser,
+		logger:                      logger,
+		addresses:                   newAddressTransactionLRU(config.MaxAddressNumber),
+		getBlockNumTimeOut:          config.GetBlockNumberQueryTimeout,
+		getTransactionsQueryTimeout: config.GetTransactionsQueryTimeout,
 	}
 
 	req := &ethereum.EthGetCurrentBlockNumberRequest{
 		RequestId: generateRequestId(),
 	}
 
-	blockNum, err := parser.getBlockNum(context, req)
+	blockNum, err := parser.getBlockNum(ctx, req)
 	if err != nil { // good practice to fast fail.
 		parser.logger.Errorf("get init block number fail | error: %s", err.Error())
 		panic(err)
 	}
 	parser.processedBlock = blockNum
-	go parser.start(context)
+	go parser.start(ctx)
 	return parser
 }
 
@@ -125,20 +133,20 @@ func (this *serviceParser) GetTransactions(address string) []ethereum.Transactio
 	}
 }
 
-func (this *serviceParser) start(context context.Context) {
-	go this.startTaskDistribution(context) // start task distribution
-	go this.startTaskExecution(context)    // start task execution
+func (this *serviceParser) start(ctx context.Context) {
+	go this.startTaskDistribution(ctx) // start task distribution
+	go this.startTaskExecution(ctx)    // start task execution
 }
 
 //startTaskDistribution is the controller of distributing tasks (to get transaction from new block)
-func (this *serviceParser) startTaskDistribution(context context.Context) {
+func (this *serviceParser) startTaskDistribution(ctx context.Context) {
 
 	this.logger.Infof("task distributor started")
 	ticker := time.Tick(this.interval)
 
 	for {
 		select {
-		case <-context.Done():
+		case <-ctx.Done():
 			this.logger.Infof("task distributor existing")
 			return
 		case <-ticker:
@@ -146,7 +154,7 @@ func (this *serviceParser) startTaskDistribution(context context.Context) {
 				RequestId: generateRequestId(),
 			}
 
-			blockNum, err := this.getBlockNum(context, req)
+			blockNum, err := this.getBlockNum(ctx, req)
 			if err != nil { //if there is err, just skip this round.
 				this.logger.Errorf("get init block number with timer fail | error: %s", err.Error())
 				continue
@@ -165,7 +173,7 @@ func (this *serviceParser) startTaskDistribution(context context.Context) {
 			// No ongoing tasks, kick off the work.
 			this.logger.Infof("kick up a new round of task | processedBlock: %d, new blockNum: %d", this.processedBlock, blockNum)
 			this.processedBlock = blockNum
-			this.updateAddress(context)
+			this.updateAddress(ctx)
 			if this.addresses.size() == 0 { // edged case: the timer is trigger before there is any address
 				continue
 			}
@@ -176,18 +184,18 @@ func (this *serviceParser) startTaskDistribution(context context.Context) {
 }
 
 // startTaskExecution is the controller of task execution
-func (this *serviceParser) startTaskExecution(context context.Context) {
+func (this *serviceParser) startTaskExecution(ctx context.Context) {
 
 	this.logger.Infof("task executor controller starting")
 
 	// spawn MaxConcurrentThreads of workers
 	for i := 0; i < this.maxConcurrentThreads; i++ {
-		go this.executeTasks(context, i)
+		go this.executeTasks(ctx, i)
 	}
 
 	for {
 		select {
-		case <-context.Done():
+		case <-ctx.Done():
 			this.logger.Infof("task executor controller existing")
 			return
 		case taskNum := <-this.newTaskNoti:
@@ -209,7 +217,7 @@ func (this *serviceParser) startTaskExecution(context context.Context) {
 }
 
 // updateAddress pick up the new subscribed addressed and insert them into the storage (`this.addresses`)
-func (this *serviceParser) updateAddress(context context.Context) {
+func (this *serviceParser) updateAddress(ctx context.Context) {
 
 	// get new addresses
 	this.newAddrLock.Lock()
@@ -237,16 +245,16 @@ func (this *serviceParser) updateAddress(context context.Context) {
 
 // executeTasks is the real worker to execute tasks.
 // Need to make sure to notify the `controller` no matter the task is successful or not
-func (this *serviceParser) executeTasks(context context.Context, workerNum int) {
+func (this *serviceParser) executeTasks(ctx context.Context, workerNum int) {
 
 	this.logger.Infof("worker started | worker number: %d", workerNum)
 	for {
 		select {
 		case task := <-this.transactionTasks:
-			this.updateTransactions(context, task.address, task.blockNum)
+			this.updateTransactions(ctx, task.address, task.blockNum)
 			this.logger.Infof("finished task | worker: %d, address: %s", workerNum, task.address)
 			this.finishedTasks <- struct{}{}
-		case <-context.Done():
+		case <-ctx.Done():
 			this.logger.Infof("worker existing | worker number: %d", workerNum)
 			return
 		}
@@ -264,14 +272,14 @@ func (this *serviceParser) distributeTasks(newBlockNum int) {
 }
 
 // updateTransactions update the transaction of an address
-func (this *serviceParser) updateTransactions(context context.Context, addr string, blockNum int) {
+func (this *serviceParser) updateTransactions(ctx context.Context, addr string, blockNum int) {
 
 	req := this.constructGetTransactionRequest(addr, blockNum)
 	if req == nil {
 		this.logger.Errorf("construct get transaction request fail | address: %s", addr)
 	}
 
-	this.doUpdateTransactions(context, req)
+	this.doUpdateTransactions(ctx, req)
 }
 
 // constructGetTransactionRequest construct the request of get transaction
@@ -294,7 +302,7 @@ func (this *serviceParser) constructGetTransactionRequest(addr string, blockNum 
 	return req
 }
 
-func (this *serviceParser) doUpdateTransactions(context context.Context, req *ethereum.EthGetCurrentTransactionsByAddressRequest) {
+func (this *serviceParser) doUpdateTransactions(ctx context.Context, req *ethereum.EthGetCurrentTransactionsByAddressRequest) {
 
 	addrData := this.addresses.getAddressIn(req.FromAddress)
 	if addrData == nil { // this should not happen
@@ -302,7 +310,9 @@ func (this *serviceParser) doUpdateTransactions(context context.Context, req *et
 		return
 	}
 
-	resp, err := this.chainAccesser.EthGetCurrentTransactionsByAddress(context, req)
+	ctx, cancelFunc := context.WithDeadline(ctx, time.Now().Add(this.getTransactionsQueryTimeout))
+	defer cancelFunc()
+	resp, err := this.chainAccesser.EthGetCurrentTransactionsByAddress(ctx, req)
 	if err != nil {
 		this.logger.Errorf("call ethereum chain to get Transactions fail | req: %v, error: %s", req, err.Error())
 		return
@@ -328,8 +338,10 @@ func (this *serviceParser) doUpdateTransactions(context context.Context, req *et
 		req.FromAddress, minInt(newTrxNum, this.maxTransactionNumber), len(addrData.transactions))
 }
 
-func (this *serviceParser) getBlockNum(context context.Context, req *ethereum.EthGetCurrentBlockNumberRequest) (int, error) {
-	bn, err := this.chainAccesser.EthGetCurrentBlockNumber(context, req)
+func (this *serviceParser) getBlockNum(ctx context.Context, req *ethereum.EthGetCurrentBlockNumberRequest) (int, error) {
+	ctx, cancelFunc := context.WithDeadline(ctx, time.Now().Add(this.getBlockNumTimeOut))
+	defer cancelFunc()
+	bn, err := this.chainAccesser.EthGetCurrentBlockNumber(ctx, req)
 	if err != nil {
 		return 0, err
 	}

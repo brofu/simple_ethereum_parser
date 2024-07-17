@@ -64,7 +64,7 @@ func NewEthJsonRpcClient(entryPoint string, logger logging.Logger) EthereumChain
 
 // EthGetCurrentBlockNumber get the block number
 // TODO: Refactor these 2 functions
-func (this *EthJsonRpcClient) EthGetCurrentBlockNumber(context context.Context, req *EthGetCurrentBlockNumberRequest) (int, error) {
+func (this *EthJsonRpcClient) EthGetCurrentBlockNumber(ctx context.Context, req *EthGetCurrentBlockNumberRequest) (int, error) {
 
 	r := RPCRequest{
 		Jsonrpc: JsonRpcVersion,
@@ -78,7 +78,13 @@ func (this *EthJsonRpcClient) EthGetCurrentBlockNumber(context context.Context, 
 		return 0, err
 	}
 
-	resp, err := http.Post(this.entryPoint, contentType, bytes.NewBuffer(rawReq))
+	httpReq, err := constructHttpRequest(ctx, http.MethodPost, this.entryPoint, contentType, bytes.NewBuffer(rawReq))
+	if err != nil {
+		this.logger.Errorf("construct request fail | method: %s, err: %s", MethodGetCurrentBlockNumber, err.Error())
+		return 0, err
+	}
+
+	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		this.logger.Errorf("chain call fail | method: %s, err: %s", MethodGetCurrentBlockNumber, err.Error())
 		return 0, err
@@ -111,7 +117,7 @@ func (this *EthJsonRpcClient) EthGetCurrentBlockNumber(context context.Context, 
 	return int(bnInt), nil
 }
 
-func (this *EthJsonRpcClient) EthGetCurrentTransactionsByAddress(context context.Context, req *EthGetCurrentTransactionsByAddressRequest) ([]Transaction, error) {
+func (this *EthJsonRpcClient) EthGetCurrentTransactionsByAddress(ctx context.Context, req *EthGetCurrentTransactionsByAddressRequest) ([]Transaction, error) {
 
 	params := []JsonRpcTraceFilterParams{
 		{
@@ -141,7 +147,13 @@ func (this *EthJsonRpcClient) EthGetCurrentTransactionsByAddress(context context
 		return nil, err
 	}
 
-	resp, err := http.Post(this.entryPoint, contentType, bytes.NewBuffer(rawReq))
+	httpReq, err := constructHttpRequest(ctx, http.MethodPost, this.entryPoint, contentType, bytes.NewBuffer(rawReq))
+	if err != nil {
+		this.logger.Errorf("construct request fail | method: %s, err: %s", MethodTraceFilter, err.Error())
+		return nil, err
+	}
+
+	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		this.logger.Errorf("chain call fail | method: %s, err: %s", MethodTraceFilter, err.Error())
 		return nil, err
@@ -185,4 +197,16 @@ func (this *EthJsonRpcClient) EthGetCurrentTransactionsByAddress(context context
 	}
 
 	return res, nil
+}
+
+func constructHttpRequest(ctx context.Context, method, url, contentType string, body io.Reader) (*http.Request, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	return req, err
 }

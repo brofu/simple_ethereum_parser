@@ -23,10 +23,12 @@ func main() {
 	logger := logging.NewDefaultLogger(logging.LevelDebug)
 	chainAccesser := ethereum.NewEthJsonRpcClient(testEntryPoint, logger)
 	config := parser.ServiceParserConfiguration{
-		MaxAddressNumber:     100,
-		MaxTransactionNumber: 100,
-		MaxConcurrentThreads: 10,
-		Interval:             time.Millisecond * 5000,
+		MaxAddressNumber:            100,
+		MaxTransactionNumber:        100,
+		MaxConcurrentThreads:        10,
+		Interval:                    time.Millisecond * 5000,
+		GetBlockNumberQueryTimeout:  time.Millisecond * 1000,
+		GetTransactionsQueryTimeout: time.Millisecond * 3000,
 	}
 	parser := parser.NewServiceParser(context, logger, chainAccesser, config)
 
